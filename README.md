@@ -18,6 +18,75 @@ Primary workflow for the International Examiner analysis focused on:
 - `outputs/enhanced_v2_chongwa_idia_unique_claims.csv`
 - `outputs/enhanced_v2_chongwa_idia_heatmap_values.csv`
 
+## Processing Workflow (Detailed)
+
+### 1) Corpus + time window
+- Input corpus is `raw_data/ie.csv` (International Examiner).
+- Analysis window is constrained to rows with canonical dates before `1980`.
+- In the current processed panel (`outputs/ie_chongwa_id_pre1980_paragraph_panel_filtered.csv`), years span `1976` to `1979`.
+
+### 2) Panel construction and filtering
+- `src/build_ie_chongwa_id_panel.py` builds paragraph-level rows and metadata.
+- `src/filter_paragraph_panel.py` removes low-quality rows and writes:
+  - `outputs/ie_chongwa_id_pre1980_paragraph_panel_qc.csv`
+  - `outputs/ie_chongwa_id_pre1980_paragraph_panel_filtered.csv`
+
+### 3) Core actor-position extraction (CI figure)
+- `src/analyze_fulltext_enhanced_v2_chongwa_idia.py`:
+  - sentence segmentation
+  - actor mention detection (`Chong Wa` vs `ID Improvement Association`)
+  - stance event extraction from dependency patterns + implicit anti-eviction rules
+  - frame assignment into:
+    - `Resident: Housing Affordability`
+    - `Resident: Anti-Eviction/Displacement`
+    - `State Resource Access / Service Delivery`
+    - `Commercial Growth`
+  - confidence scoring per claim
+  - claim clustering into unique claim units
+- Direction metric:
+  - confidence-weighted support-minus-oppose index per actor x frame.
+- Uncertainty:
+  - bootstrap CI (95%) over unique claims per cell.
+
+### 4) Allies-network extraction
+- `src/analyze_chongwa_idia_allies_network.py` builds an organization-only network centered on:
+  - `Chong Wa (CBA)`
+  - `ID Improvement Association`
+
+Pipeline details:
+- NER extraction restricted to `ORG` entities for allies.
+- Aggressive alias normalization:
+  - `Chong Wa`/`Chong Wah`/`Chinese Benevolent Association` -> `Chong Wa (CBA)`
+  - `International District Economic Association` + `IDEA` -> `International District Economic Association (IDEA)`
+  - `HUD` + spelled-out variant -> `Department of Housing and Urban Development (HUD)`
+  - `CSA` + spelled-out variant -> `Community Services Administration (CSA)`
+- Non-organization artifact filtering:
+  - removes role/fragment/noise entities (e.g., ordinance/task-force/role fragments, board-role strings, OCR-like artifacts).
+- Relationship assignment (sentence-level):
+  - `aligned`/`opposed` from high-precision cue rules
+  - ambiguous cases use a lightweight in-corpus Naive Bayes sentence model
+  - guardrails force `neutral` for procedural/service contexts to avoid false polarity.
+- Relationship assignment (edge-level historical aggregation):
+  - sentence labels are aggregated by edge over all months.
+  - final edge label is derived from historical aligned/opposed balance (`relation_score`) with month-level stability checks.
+- Explicit project prior:
+  - `Chong Wa (CBA)` ↔ `ID Improvement Association` is forced as `opposed` in final network outputs.
+
+### 5) Visualization conventions for allies network
+- Node color:
+  - `Federal Agency` (dark blue)
+  - `Local Government Agency` (teal)
+  - `Community Organization` (light blue)
+  - Hub colors: `Chong Wa (CBA)` orange, `ID Improvement Association` blue
+- Edge style:
+  - `aligned` = green solid
+  - `opposed` = red dashed
+  - `neutral` = gray dotted
+- Node size:
+  - proportional to number of sentences co-mentioning that organization with one of the hubs.
+- Source annotation:
+  - `Source: Seattle's International Examiner (1976-1979)`
+
 ## Allies Network (Chong Wa vs IDIA)
 
 Builds an organization-only allies network with:
@@ -50,6 +119,8 @@ Outputs:
 - `outputs/fig_chongwa_idia_allies_network.png`
 - `outputs/chongwa_idia_allies_nodes.csv`
 - `outputs/chongwa_idia_allies_edges.csv`
+- `outputs/chongwa_idia_allies_edge_evidence.csv`
+- `outputs/chongwa_idia_idea_edge_evidence.csv`
 
 ## Data Inputs
 
@@ -64,3 +135,4 @@ Outputs:
   - `State Resource Access / Service Delivery`
   - `Commercial Growth`
 - `Environmental/Traffic` and `Representation/Identity` are excluded from the v2 figure set.
+- For edge diagnostics, inspect `outputs/chongwa_idia_allies_edge_evidence.csv` to trace sentence-level relation assignments.

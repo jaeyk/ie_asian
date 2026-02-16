@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import pathlib
 import re
 import string
@@ -85,6 +86,20 @@ ALLOWED_ACRONYMS = {"CSA", "HUD", "IDSRB", "IDEA", "CETA"}
 STREET_WORD_PAT = re.compile(r"\b(street|st\.?|avenue|ave\.?|blvd|boulevard|road|rd\.?|way|place|plaza)\b", re.IGNORECASE)
 LIKELY_PLACE_TOKENS = {"jackson", "maynard", "weller", "king", "washington", "seattle", "chinatown"}
 EXCLUDE_ALLY_PAT = re.compile(r"\b(hotel|station)\b", re.IGNORECASE)
+SERVICE_CONTEXT_PAT = re.compile(
+    r"\b(program|employment program|youth program|service|services|clinic|center|referral|hiring|contracting)\b",
+    re.IGNORECASE,
+)
+TRAFFIC_STADIUM_CONTEXT_PAT = re.compile(
+    r"\b(stadium|traffic|parking|hearing|city plan|planning bodies?|special review board|public corporation)\b",
+    re.IGNORECASE,
+)
+TOKEN_PAT = re.compile(r"[a-z][a-z\-]{2,}")
+STOP_TOKENS = {
+    "the", "and", "for", "that", "with", "from", "this", "have", "has", "had", "were", "was",
+    "are", "but", "not", "their", "they", "them", "into", "onto", "also", "will", "would", "could",
+    "about", "there", "which", "when", "what", "where", "while", "after", "before", "through",
+}
 FEDERAL_AGENCIES = {HUD_LABEL, CSA_LABEL}
 LOCAL_GOV_AGENCIES = {"City Building Department"}
 
@@ -170,6 +185,76 @@ def relation_label(sentence: str) -> str:
     if ALLIANCE_CUE_PAT.search(sentence):
         return "aligned"
     return "neutral"
+
+
+def sent_tokens(sentence: str) -> list[str]:
+    toks = [t for t in TOKEN_PAT.findall((sentence or "").lower()) if t not in STOP_TOKENS]
+    return toks
+
+
+def build_sentence_relation_model(sentences: list[str]) -> dict:
+    """Train a tiny Naive Bayes model (aligned vs opposed) from high-precision cue labels."""
+    by_cls = {"aligned": Counter(), "opposed": Counter()}
+    n_docs = {"aligned": 0, "opposed": 0}
+    vocab = set()
+    for s in sentences:
+        hard = relation_label(s)
+        if hard not in {"aligned", "opposed"}:
+            continue
+        toks = sent_tokens(s)
+        if not toks:
+            continue
+        by_cls[hard].update(toks)
+        n_docs[hard] += 1
+        vocab.update(toks)
+    return {
+        "counts": by_cls,
+        "n_docs": n_docs,
+        "vocab": vocab,
+        "totals": {k: sum(v.values()) for k, v in by_cls.items()},
+    }
+
+
+def infer_relation_with_model(sentence: str, model: dict, min_conf: float = 0.62) -> str:
+    hard = relation_label(sentence)
+    if hard in {"aligned", "opposed"}:
+        return hard
+    # Guardrail: service/program administration language is often procedural,
+    # not political alignment/opposition.
+    if SERVICE_CONTEXT_PAT.search(sentence or ""):
+        return "neutral"
+    # Guardrail: stadium/traffic/planning co-mentions are often shared process
+    # context; avoid inferring opposition without explicit conflict wording.
+    if TRAFFIC_STADIUM_CONTEXT_PAT.search(sentence or ""):
+        return "neutral"
+    # no model signal available
+    if model["n_docs"]["aligned"] == 0 or model["n_docs"]["opposed"] == 0 or not model["vocab"]:
+        return "neutral"
+
+    toks = sent_tokens(sentence)
+    if not toks:
+        return "neutral"
+
+    vocab_n = max(1, len(model["vocab"]))
+    total_docs = model["n_docs"]["aligned"] + model["n_docs"]["opposed"]
+    logp = {}
+    for cls in ("aligned", "opposed"):
+        prior = (model["n_docs"][cls] + 1) / (total_docs + 2)
+        ll = math.log(prior)
+        denom = model["totals"][cls] + vocab_n
+        for t in toks:
+            c = model["counts"][cls].get(t, 0)
+            ll += math.log((c + 1) / denom)
+        logp[cls] = ll
+
+    m = max(logp.values())
+    pa = math.exp(logp["aligned"] - m)
+    po = math.exp(logp["opposed"] - m)
+    z = pa + po
+    pa, po = pa / z, po / z
+    if max(pa, po) < min_conf:
+        return "neutral"
+    return "aligned" if pa >= po else "opposed"
 
 
 def classify_relation_historical(counts: Counter, month_counts: dict[str, Counter]) -> tuple[str, float]:
@@ -299,7 +384,9 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
             label_pos[n] = (x, y - 0.06)
         else:
             label_pos[n] = (x, y)
-    nx.draw_networkx_labels(g, label_pos, labels=labels, font_size=8, font_color="#1A1A1A")
+    label_artists = nx.draw_networkx_labels(g, label_pos, labels=labels, font_size=8, font_color="#1A1A1A")
+    for _, txt in label_artists.items():
+        txt.set_clip_on(False)
 
     # Legend proxies
     plt.scatter([], [], s=130, color="#0B3C8A", label="Federal Agency")
@@ -330,7 +417,7 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
     )
     plt.axis("off")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    plt.tight_layout(rect=[0.03, 0.05, 0.97, 1])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
@@ -344,6 +431,8 @@ def main() -> None:
     p.add_argument("--min-ally-mentions", type=int, default=2)
     p.add_argument("--out-nodes", default="outputs/chongwa_idia_allies_nodes.csv")
     p.add_argument("--out-edges", default="outputs/chongwa_idia_allies_edges.csv")
+    p.add_argument("--out-edge-evidence", default="outputs/chongwa_idia_allies_edge_evidence.csv")
+    p.add_argument("--out-idea-evidence", default="outputs/chongwa_idia_idea_edge_evidence.csv")
     p.add_argument("--fig", default="outputs/fig_chongwa_idia_allies_network.png")
     args = p.parse_args()
 
@@ -357,12 +446,27 @@ def main() -> None:
     with panel_path.open(newline="", encoding="utf-8") as f:
         panel = list(csv.DictReader(f))
 
+    # Build data-driven sentence relation model from this corpus slice.
+    train_sentences = []
+    for r in panel:
+        try:
+            if int(r.get("canonical_year", "0")) >= args.before_year:
+                continue
+        except Exception:
+            continue
+        txt = clean_text(r.get("paragraph_text", ""))
+        if not txt:
+            continue
+        train_sentences.extend(split_sentences(txt))
+    rel_model = build_sentence_relation_model(train_sentences)
+
     # ally tallies by side
     ally_counts = {CHONGWA_LABEL: Counter(), IDIA_LABEL: Counter()}
     # edge tallies
     edge_rel = defaultdict(Counter)  # (a,b) -> relation counts
     edge_rel_month = defaultdict(lambda: defaultdict(Counter))  # (a,b)->(YYYY-MM -> rel counts)
     hub_hub = Counter()
+    edge_evidence = []
 
     for r in panel:
         try:
@@ -378,12 +482,12 @@ def main() -> None:
             id_here = bool(IDIA_PAT.search(sent))
             ym = f"{r.get('canonical_year','')}-{str(r.get('canonical_month','')).zfill(2)}"
             if cw_here and id_here:
-                hub_hub[relation_label(sent)] += 1
+                hub_hub[infer_relation_with_model(sent, rel_model)] += 1
 
             side = mention_side(sent)
             if side is None:
                 continue
-            rel = relation_label(sent)
+            rel = infer_relation_with_model(sent, rel_model)
             doc = nlp_ner(sent)
             allies = set()
             for e in doc.ents:
@@ -401,10 +505,34 @@ def main() -> None:
                 k = tuple(sorted((hub, a)))
                 edge_rel[k][rel] += 1
                 edge_rel_month[k][ym][rel] += 1
+                edge_evidence.append(
+                    {
+                        "source": k[0],
+                        "target": k[1],
+                        "year_month": ym,
+                        "file_name": r.get("file_name", ""),
+                        "article_id": r.get("article_id", ""),
+                        "paragraph_id": r.get("paragraph_id", ""),
+                        "relation_sentence": rel,
+                        "sentence_text": sent,
+                    }
+                )
             for a, b in combinations(sorted(allies), 2):
                 k = tuple(sorted((a, b)))
                 edge_rel[k][rel] += 1
                 edge_rel_month[k][ym][rel] += 1
+                edge_evidence.append(
+                    {
+                        "source": k[0],
+                        "target": k[1],
+                        "year_month": ym,
+                        "file_name": r.get("file_name", ""),
+                        "article_id": r.get("article_id", ""),
+                        "paragraph_id": r.get("paragraph_id", ""),
+                        "relation_sentence": rel,
+                        "sentence_text": sent,
+                    }
+                )
 
     selected = {CHONGWA_LABEL: set(), IDIA_LABEL: set()}
     for side in selected:
@@ -489,14 +617,34 @@ def main() -> None:
     )
     edges = sorted(edges, key=lambda x: (-x["n_sentences"], x["source"], x["target"]))
 
+    # Keep evidence only for nodes that made the final network.
+    keep_pairs = {tuple(sorted((e["source"], e["target"]))) for e in edges}
+    evidence_rows = [
+        r
+        for r in edge_evidence
+        if tuple(sorted((r["source"], r["target"]))) in keep_pairs
+    ]
+
+    # Edge-specific audit file for IDEA vs IDIA.
+    idea_pair = tuple(sorted((IDIA_LABEL, IDEA_LABEL)))
+    idea_rows = [
+        r
+        for r in evidence_rows
+        if tuple(sorted((r["source"], r["target"]))) == idea_pair
+    ]
+
     write_csv(pathlib.Path(args.out_nodes), nodes)
     write_csv(pathlib.Path(args.out_edges), edges)
+    write_csv(pathlib.Path(args.out_edge_evidence), evidence_rows)
+    write_csv(pathlib.Path(args.out_idea_evidence), idea_rows)
     plot_network(nodes, edges, pathlib.Path(args.fig))
 
     print(f"Nodes: {len(nodes)}")
     print(f"Edges: {len(edges)}")
     print(f"Wrote: {args.out_nodes}")
     print(f"Wrote: {args.out_edges}")
+    print(f"Wrote: {args.out_edge_evidence}")
+    print(f"Wrote: {args.out_idea_evidence}")
     print(f"Wrote: {args.fig}")
 
 
