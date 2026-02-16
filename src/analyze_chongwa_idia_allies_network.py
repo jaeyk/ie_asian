@@ -50,6 +50,9 @@ ALLIANCE_CUE_PAT = re.compile(
 KEEP_ENTITY_LABELS = {"ORG"}
 CHONGWA_LABEL = "Chong Wa (CBA)"
 IDIA_LABEL = "ID Improvement Association"
+HUD_LABEL = "Department of Housing and Urban Development (HUD)"
+CSA_LABEL = "Community Services Administration (CSA)"
+IDEA_LABEL = "International District Economic Association (IDEA)"
 BAD_ALLY = {
     "chong wa",
     "id improvement association",
@@ -82,7 +85,7 @@ ALLOWED_ACRONYMS = {"CSA", "HUD", "IDSRB", "IDEA", "CETA"}
 STREET_WORD_PAT = re.compile(r"\b(street|st\.?|avenue|ave\.?|blvd|boulevard|road|rd\.?|way|place|plaza)\b", re.IGNORECASE)
 LIKELY_PLACE_TOKENS = {"jackson", "maynard", "weller", "king", "washington", "seattle", "chinatown"}
 EXCLUDE_ALLY_PAT = re.compile(r"\b(hotel|station)\b", re.IGNORECASE)
-FEDERAL_AGENCIES = {"HUD", "CSA"}
+FEDERAL_AGENCIES = {HUD_LABEL, CSA_LABEL}
 LOCAL_GOV_AGENCIES = {"City Building Department"}
 
 
@@ -102,10 +105,16 @@ def normalize_name(s: str, label: str) -> str:
         return CHONGWA_LABEL
     if IDIA_PAT.search(t):
         return IDIA_LABEL
+    if re.fullmatch(r"\s*HUD\s*", t, re.IGNORECASE):
+        return HUD_LABEL
+    if re.fullmatch(r"\s*CSA\s*", t, re.IGNORECASE):
+        return CSA_LABEL
+    if re.fullmatch(r"\s*IDEA\s*", t, re.IGNORECASE):
+        return IDEA_LABEL
     if re.search(r"international\s+district\s+economic\s+association", t, re.IGNORECASE):
-        return "IDEA"
+        return IDEA_LABEL
     if re.search(r"department\s+of\s+housing\s+and\s+urban\s+development", t, re.IGNORECASE):
-        return "HUD"
+        return HUD_LABEL
     if label == "ORG" and re.fullmatch(r"[A-Za-z]{2,6}", t):
         return t.upper()
 
@@ -284,21 +293,13 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
     nx.draw_networkx_nodes(g, pos, node_color=node_color, node_size=node_size, edgecolors="#222222", linewidths=0.8)
 
     labels = {n: n for n in g.nodes()}
-    dark_bg = {"#0B3C8A", "#1f77b4"}
-    labels_dark = {
-        n: lab
-        for n, lab in labels.items()
-        if node_fill.get(n) in dark_bg and n != IDIA_LABEL
-    }
-    labels_light = {
-        n: lab
-        for n, lab in labels.items()
-        if node_fill.get(n) not in dark_bg or n == IDIA_LABEL
-    }
-    if labels_light:
-        nx.draw_networkx_labels(g, pos, labels=labels_light, font_size=8, font_color="#1A1A1A")
-    if labels_dark:
-        nx.draw_networkx_labels(g, pos, labels=labels_dark, font_size=8, font_color="white")
+    label_pos = {}
+    for n, (x, y) in pos.items():
+        if n in FEDERAL_AGENCIES:
+            label_pos[n] = (x, y - 0.06)
+        else:
+            label_pos[n] = (x, y)
+    nx.draw_networkx_labels(g, label_pos, labels=labels, font_size=8, font_color="#1A1A1A")
 
     # Legend proxies
     plt.scatter([], [], s=130, color="#0B3C8A", label="Federal Agency")

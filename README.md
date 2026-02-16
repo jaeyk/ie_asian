@@ -23,7 +23,17 @@ Primary workflow for the International Examiner analysis focused on:
 Builds an organization-only allies network with:
 - Hubs: `Chong Wa (CBA)` and `ID Improvement Association`
 - Edge types: `aligned`, `opposed`, `neutral`
-- Organization type coloring: `Federal Agency`, `Local Government Agency`, `Community Organization`
+  - `opposed` is explicitly enforced for `Chong Wa (CBA)` vs `ID Improvement Association`
+  - Other edge labels are based on historical aggregation across the full period
+- Organization type coloring:
+  - `Federal Agency` (dark blue): includes `Department of Housing and Urban Development (HUD)` and `Community Services Administration (CSA)`
+  - `Local Government Agency` (teal): includes `City Building Department`
+  - `Community Organization` (light blue)
+- Labeling and cleanup:
+  - `Chong Wa`, `Chong Wah`, and Chinese Benevolent Association/Society aliases are normalized to `Chong Wa (CBA)`
+  - `International District Economic Association` is normalized to `International District Economic Association (IDEA)`
+  - Non-organization artifacts (e.g., ordinance/task-force/role fragments) are filtered
+- Node size: sentence-level co-mention count with `Chong Wa (CBA)` or `ID Improvement Association`
 
 Run:
 
