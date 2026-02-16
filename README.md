@@ -63,14 +63,44 @@ Pipeline details:
 - Non-organization artifact filtering:
   - removes role/fragment/noise entities (e.g., ordinance/task-force/role fragments, board-role strings, OCR-like artifacts).
 - Relationship assignment (sentence-level):
-  - `aligned`/`opposed` from high-precision cue rules
-  - ambiguous cases use a lightweight in-corpus Naive Bayes sentence model
+  - `aligned`/`opposed` from high-precision cue rules (`cues`)
+  - ambiguous cases use a lightweight in-corpus classifier (`model`)
   - guardrails force `neutral` for procedural/service contexts to avoid false polarity.
 - Relationship assignment (edge-level historical aggregation):
   - sentence labels are aggregated by edge over all months.
   - final edge label is derived from historical aligned/opposed balance (`relation_score`) with month-level stability checks.
 - Explicit project prior:
   - `Chong Wa (CBA)` ↔ `ID Improvement Association` is forced as `opposed` in final network outputs.
+
+### Cues vs Model (Exact Definition)
+
+`Cue` layer (rule-based):
+- A sentence is `opposed` if it contains explicit conflict lexicon (e.g., `against`, `oppose`, `reject`, `criticize`, `conflict`, `dispute`).
+- A sentence is `aligned` if it contains explicit cooperation/support lexicon (e.g., `partner`, `collaborate`, `cooperate`, `support`, `back`, `endorse`).
+- If neither is present, sentence is provisionally `neutral`.
+
+`Model` layer (only for ambiguous/no-cue sentences):
+- Classifier type: multinomial Naive Bayes built from this same corpus slice (pre-1980 panel).
+- Training labels: only high-confidence cue-labeled sentences (`aligned` or `opposed`) are used as pseudo-labeled training data.
+- Features: lowercase token counts from regex tokenization (`[a-z][a-z-]{2,}`) with stopword removal.
+- Smoothing: Laplace/add-one smoothing on token likelihoods.
+- Priors: class priors from training document counts with add-one prior smoothing.
+- Decision rule:
+  - compute posterior probabilities for `aligned` vs `opposed`
+  - if max posterior < confidence threshold (`0.62`), return `neutral`
+  - otherwise return the argmax class.
+- Guardrails before model inference:
+  - service/program administration contexts are forced to `neutral`
+  - stadium/traffic/planning procedural contexts are forced to `neutral` unless explicit conflict cues are present.
+
+`Historical edge` layer:
+- For each edge, sentence-level labels are aggregated over the full period and by month.
+- `relation_score = (n_aligned - n_opposed) / (n_aligned + n_opposed)` (if denominator > 0, else 0).
+- Final edge label:
+  - `aligned` if score >= `0.25`
+  - `opposed` if score <= `-0.25`
+  - otherwise `neutral`
+  - if monthly polarity flips and global magnitude is weak (`|score| < 0.6`), edge is set to `neutral`.
 
 ### 5) Visualization conventions for allies network
 - Node color:
