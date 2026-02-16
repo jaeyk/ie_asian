@@ -1,95 +1,56 @@
-# nclr_latino
+# ie_asian: Chong Wa vs IDIA (Pre-1980)
 
-Minimal pipeline for paragraph-level comparison of panethnic vs ethnic contexts, ending in two core figures.
+Primary workflow for the International Examiner analysis focused on:
+- Actor comparison: `Chong Wa` vs `ID Improvement Association`
+- Time cut: earliest available date to before `1980`
+- Main output figure: `outputs/fig_enhanced_v2_chongwa_idia_direction_ci.png`
 
-## 1) Extract Metadata
+## One Command (Recommended)
 
 ```bash
-python3 src/extract_issue_metadata.py
+./run_enhanced_v2_direction_ci.sh
+```
+
+## Primary Outputs
+
+- `outputs/fig_enhanced_v2_chongwa_idia_direction_ci.png`
+- `outputs/enhanced_v2_chongwa_idia_claims.csv`
+- `outputs/enhanced_v2_chongwa_idia_unique_claims.csv`
+- `outputs/enhanced_v2_chongwa_idia_heatmap_values.csv`
+
+## Allies Network (Chong Wa vs IDIA)
+
+Builds an organization-only allies network with:
+- Hubs: `Chong Wa (CBA)` and `ID Improvement Association`
+- Edge types: `aligned`, `opposed`, `neutral`
+- Organization type coloring: `Federal Agency`, `Local Government Agency`, `Community Organization`
+
+Run:
+
+```bash
+MPLBACKEND=Agg MPLCONFIGDIR=/tmp/mplconfig XDG_CACHE_HOME=/tmp/.cache FONTCONFIG_PATH=/tmp/fontconfig \
+.venv_spacy312/bin/python src/analyze_chongwa_idia_allies_network.py \
+  --panel outputs/ie_chongwa_id_pre1980_paragraph_panel_filtered.csv \
+  --before-year 1980 \
+  --top-allies-per-side 10 \
+  --min-ally-mentions 2
 ```
 
 Outputs:
-- `outputs/issue_metadata.csv`
-- `outputs/date_conflicts.csv`
+- `outputs/fig_chongwa_idia_allies_network.png`
+- `outputs/chongwa_idia_allies_nodes.csv`
+- `outputs/chongwa_idia_allies_edges.csv`
 
-## 2) Parse Multi-Column PDFs
+## Data Inputs
 
-```bash
-python3 src/parse_multicolumn_pdfs.py
-```
+- Source CSV: `raw_data/ie.csv`
+- Generated panel: `outputs/ie_chongwa_id_pre1980_paragraph_panel_filtered.csv`
 
-Outputs:
-- `outputs/line_text.csv`
-- `outputs/page_text.csv`
-- `outputs/issue_text.csv`
+## Notes
 
-## 3) Build Paragraph Panel
-
-```bash
-python3 src/build_paragraph_panel.py
-```
-
-Output:
-- `outputs/paragraph_panel.csv`
-
-## 4) Quality Filter
-
-```bash
-python3 src/filter_paragraph_panel.py
-```
-
-Outputs:
-- `outputs/paragraph_panel_qc.csv`
-- `outputs/paragraph_panel_filtered.csv`
-
-## 5) Compare Themes in Panethnic-Appeared vs Ethnic-Appeared Paragraphs
-
-```bash
-python3 src/analyze_paragraph_ethnic_panethnic_themes.py
-```
-
-Outputs:
-- `outputs/paragraph_theme_prevalence_by_group.csv`
-- `outputs/paragraph_theme_contrast_panethnic_minus_ethnic.csv`
-- `outputs/paragraph_theme_monthly_by_group.csv`
-
-## 6) Corpus Summary Table (Reader-Facing)
-
-Create corpus-level and issue-level descriptive summaries (e.g., average paragraphs per issue):
-
-```bash
-python3 src/summarize_corpus.py
-```
-
-Outputs:
-- `outputs/corpus_summary_table.csv`
-- `outputs/corpus_summary_table.md`
-- `outputs/corpus_issue_level_summary.csv`
-
-## 7) Figure A: Group Share Gap + Raw Shares (Paragraph Unit)
-
-```bash
-Rscript src/plot_paragraph_group_share_gap_panel.R
-```
-
-Output:
-- `outputs/fig_span_group_share_over_time_gap_panel.png`
-
-Notes:
-- Top panel: panethnic minus ethnic gap (percentage points).
-- Bottom panel: raw percent shares.
-- Both panels use paragraph unit.
-
-## 8) Figure B: Theme Trend Facets (Paragraph Unit)
-
-```bash
-Rscript src/plot_paragraph_ethnic_panethnic_themes.R --normalize=max100
-```
-
-Output:
-- `outputs/fig_paragraph_theme_trends_facet.png`
-
-Notes:
-- Grayscale panethnic vs ethnic lines.
-- Gray band indicates the gap between lines.
-- `--normalize=max100` normalizes each group line within each facet for shape comparison.
+- Current issue set used in v2 figures:
+  - `Resident: Housing Affordability`
+  - `Resident: Anti-Eviction/Displacement`
+  - `State Resource Access / Service Delivery`
+  - `Commercial Growth`
+- `Environmental/Traffic` and `Representation/Identity` are excluded from the v2 figure set.
