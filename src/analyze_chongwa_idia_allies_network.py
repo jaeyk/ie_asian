@@ -101,7 +101,12 @@ STOP_TOKENS = {
     "about", "there", "which", "when", "what", "where", "while", "after", "before", "through",
 }
 FEDERAL_AGENCIES = {HUD_LABEL, CSA_LABEL}
-LOCAL_GOV_AGENCIES = {"City Building Department"}
+LOCAL_GOV_AGENCIES = {
+    "City Building Department",
+    "City Department of Community Development",
+    "Seattle Summer Youth Program",
+    "Seattle Summer Youth Employment Program",
+}
 
 
 def clean_text(s: str) -> str:
@@ -345,7 +350,7 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
             node_fill[n] = c
             node_size.append(260 + 28 * d["n_mentions"])
         elif n in LOCAL_GOV_AGENCIES or d.get("org_type") == "Local Government Agency":
-            c = "#0E7C86"
+            c = "#2E7D32"
             node_color.append(c)
             node_fill[n] = c
             node_size.append(260 + 28 * d["n_mentions"])
@@ -390,16 +395,16 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
 
     # Legend proxies
     plt.scatter([], [], s=130, color="#0B3C8A", label="Federal Agency")
-    plt.scatter([], [], s=130, color="#0E7C86", label="Local Government Agency")
+    plt.scatter([], [], s=130, color="#2E7D32", label="Local Government Agency / Program")
     plt.scatter([], [], s=130, color="#9ECAE1", label="Community Organization")
     plt.plot([], [], color="#2E7D32", label="Aligned", linewidth=2)
     plt.plot([], [], color="#C62828", linestyle="--", label="Opposed", linewidth=2)
     plt.plot([], [], color="#B0B0B0", linestyle=":", label="Neutral", linewidth=2)
-    plt.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=6)
+    plt.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.04), ncol=3)
     plt.title("Chong Wa (CBA) and IDIA Allies Network")
     plt.figtext(
         0.5,
-        0.92,
+        0.945,
         "Node size = number of sentences where the organization is co-mentioned with Chong Wa (CBA) or IDIA",
         ha="center",
         va="top",
@@ -407,10 +412,19 @@ def plot_network(node_rows: list[dict], edge_rows: list[dict], out_path: pathlib
         color="#4A4A4A",
     )
     plt.figtext(
-        0.01,
+        0.5,
+        0.922,
+        "Edge type = historical aggregation of sentence-level cues/model: explicit conflict -> opposed, explicit cooperation -> aligned, otherwise neutral",
+        ha="center",
+        va="top",
+        fontsize=9,
+        color="#4A4A4A",
+    )
+    plt.figtext(
+        0.99,
         0.015,
         "Source: Seattle's International Examiner (1976-1979)",
-        ha="left",
+        ha="right",
         va="bottom",
         fontsize=9,
         color="#4A4A4A",

@@ -2,9 +2,9 @@
 """Build a Chong Wa vs IDIA allies network with relationship labels.
 
 Outputs:
-- outputs/chongwa_idia_allies_nodes_largefont.csv
-- outputs/chongwa_idia_allies_edges_largefont.csv
-- outputs/fig_chongwa_idia_allies_network_largefont.png
+- outputs/chongwa_idia_allies_nodes_largefont_computed_hh.csv
+- outputs/chongwa_idia_allies_edges_largefont_computed_hh.csv
+- outputs/fig_chongwa_idia_allies_network_largefont_computed_hh.png
 """
 
 from __future__ import annotations
@@ -447,11 +447,11 @@ def main() -> None:
     p.add_argument("--spacy-model", default="en_core_web_sm")
     p.add_argument("--top-allies-per-side", type=int, default=12)
     p.add_argument("--min-ally-mentions", type=int, default=2)
-    p.add_argument("--out-nodes", default="outputs/chongwa_idia_allies_nodes_largefont.csv")
-    p.add_argument("--out-edges", default="outputs/chongwa_idia_allies_edges_largefont.csv")
-    p.add_argument("--out-edge-evidence", default="outputs/chongwa_idia_allies_edge_evidence_largefont.csv")
-    p.add_argument("--out-idea-evidence", default="outputs/chongwa_idia_idea_edge_evidence_largefont.csv")
-    p.add_argument("--fig", default="outputs/fig_chongwa_idia_allies_network_largefont.png")
+    p.add_argument("--out-nodes", default="outputs/chongwa_idia_allies_nodes_largefont_computed_hh.csv")
+    p.add_argument("--out-edges", default="outputs/chongwa_idia_allies_edges_largefont_computed_hh.csv")
+    p.add_argument("--out-edge-evidence", default="outputs/chongwa_idia_allies_edge_evidence_largefont_computed_hh.csv")
+    p.add_argument("--out-idea-evidence", default="outputs/chongwa_idia_idea_edge_evidence_largefont_computed_hh.csv")
+    p.add_argument("--fig", default="outputs/fig_chongwa_idia_allies_network_largefont_computed_hh.png")
     args = p.parse_args()
 
     panel_path = pathlib.Path(args.panel)
@@ -484,6 +484,7 @@ def main() -> None:
     edge_rel = defaultdict(Counter)  # (a,b) -> relation counts
     edge_rel_month = defaultdict(lambda: defaultdict(Counter))  # (a,b)->(YYYY-MM -> rel counts)
     hub_hub = Counter()
+    hub_hub_month = defaultdict(Counter)
     edge_evidence = []
 
     for r in panel:
@@ -500,7 +501,9 @@ def main() -> None:
             id_here = bool(IDIA_PAT.search(sent))
             ym = f"{r.get('canonical_year','')}-{str(r.get('canonical_month','')).zfill(2)}"
             if cw_here and id_here:
-                hub_hub[infer_relation_with_model(sent, rel_model)] += 1
+                rel_hh = infer_relation_with_model(sent, rel_model)
+                hub_hub[rel_hh] += 1
+                hub_hub_month[ym][rel_hh] += 1
 
             side = mention_side(sent)
             if side is None:
@@ -617,20 +620,20 @@ def main() -> None:
         )
     edges = sorted(edges, key=lambda x: (-x["n_sentences"], x["source"], x["target"]))
 
-    # Ensure Chong Wa (CBA) <-> IDIA relation is explicitly shown.
-    # Project intent: these two actors are opposing hubs in this conflict map.
+    # Ensure Chong Wa (CBA) <-> IDIA relation is explicitly shown, using calculated evidence.
     hh_total = int(sum(hub_hub.values()))
+    hh_rel, hh_score = classify_relation_historical(hub_hub, hub_hub_month)
     edges = [e for e in edges if not ({e["source"], e["target"]} == {CHONGWA_LABEL, IDIA_LABEL})]
     edges.append(
         {
             "source": CHONGWA_LABEL,
             "target": IDIA_LABEL,
-            "n_sentences": max(1, hh_total),
+            "n_sentences": hh_total,
             "n_aligned": int(hub_hub.get("aligned", 0)),
-            "n_opposed": max(1, int(hub_hub.get("opposed", 0))),
+            "n_opposed": int(hub_hub.get("opposed", 0)),
             "n_neutral": int(hub_hub.get("neutral", 0)),
-            "relation_score": -1.0,
-            "relation": "opposed",
+            "relation_score": hh_score,
+            "relation": hh_rel,
         }
     )
     edges = sorted(edges, key=lambda x: (-x["n_sentences"], x["source"], x["target"]))
