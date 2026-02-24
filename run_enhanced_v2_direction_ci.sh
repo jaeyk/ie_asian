@@ -6,6 +6,7 @@ set -euo pipefail
 
 python3 src/build_ie_chongwa_id_panel.py \
   --before-year 1980 \
+  --source "International Examiner" \
   --require-date \
   --out outputs/ie_chongwa_id_pre1980_paragraph_panel.csv
 

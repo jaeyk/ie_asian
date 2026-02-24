@@ -91,6 +91,7 @@ Pipeline details:
   - otherwise return the argmax class.
 - Guardrails before model inference:
   - service/program administration contexts are forced to `neutral`
+  - meeting/discussion process language (e.g., `met with`, `discussed with`) is forced to `neutral`
   - stadium/traffic/planning procedural contexts are forced to `neutral` unless explicit conflict cues are present.
 
 `Historical edge` layer:

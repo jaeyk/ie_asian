@@ -90,6 +90,11 @@ SERVICE_CONTEXT_PAT = re.compile(
     r"\b(program|employment program|youth program|service|services|clinic|center|referral|hiring|contracting)\b",
     re.IGNORECASE,
 )
+PROCESS_NEUTRAL_PAT = re.compile(
+    r"\b(met|meet|meeting|discuss(?:ed|es|ing)?|talk(?:ed|s|ing)?|"
+    r"consult(?:ed|s|ing)?|coordinat(?:ed|es|ing)?|work(?:ed|s|ing)?)\b(?:\W+\w+){0,3}?\W+\b(with|on)\b",
+    re.IGNORECASE,
+)
 TRAFFIC_STADIUM_CONTEXT_PAT = re.compile(
     r"\b(stadium|traffic|parking|hearing|city plan|planning bodies?|special review board|public corporation)\b",
     re.IGNORECASE,
@@ -224,6 +229,9 @@ def infer_relation_with_model(sentence: str, model: dict, min_conf: float = 0.62
     hard = relation_label(sentence)
     if hard in {"aligned", "opposed"}:
         return hard
+    # Guardrail: procedural meeting/discussion language is usually neutral.
+    if PROCESS_NEUTRAL_PAT.search(sentence or ""):
+        return "neutral"
     # Guardrail: service/program administration language is often procedural,
     # not political alignment/opposition.
     if SERVICE_CONTEXT_PAT.search(sentence or ""):
